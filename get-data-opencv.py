@@ -109,7 +109,7 @@ with HandLandmarker.create_from_options(options) as detector:
 
         # ----------- Grava Coords -------------
 
-        if modo_gravacao and coords_wrist is not None:
+        if modo_gravacao is not None and len(coords_wrist) > 0:
             dataset.append(coords_wrist + [modo_gravacao])
             contador[modo_gravacao] += 1
             frames_restantes -= 1
