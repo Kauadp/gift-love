@@ -485,20 +485,19 @@ class MainWindow(QMainWindow):
         anim.setStartValue(0)
         anim.setEndValue(1)
         anim.setEasingCurve(QEasingCurve.InOutSine)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
         
-        # Quando terminar fade in, REMOVE o effect para evitar problemas
-        def cleanup_effect():
-            self.hud_bar.setGraphicsEffect(None)
-            self.hud_bar.setStyleSheet("background-color: transparent;")
-            print(f"[HUD] ✓ Visível e fixo!")
-            print(f"      Título: '{self.hud_title.text()}'")
-            print(f"      Subtítulo: '{self.hud_subtitle.text()}'")
-            print(f"      Geometria título: {self.hud_title.geometry()}")
-            print(f"      Geometria sub: {self.hud_subtitle.geometry()}")
-            self._finish_intro()
-        
-        anim.finished.connect(cleanup_effect)
-        anim.start()
+        # Garante que _finish_intro seja chamado após animação
+        QTimer.singleShot(1100, self._cleanup_hud_and_finish)
+
+    def _cleanup_hud_and_finish(self):
+        """Limpa efeitos do HUD e chama _finish_intro"""
+        self.hud_bar.setGraphicsEffect(None)
+        self.hud_bar.setStyleSheet("background-color: transparent;")
+        print(f"[HUD] ✓ Visível e fixo!")
+        print(f"      Título: '{self.hud_title.text()}'")
+        print(f"      Subtítulo: '{self.hud_subtitle.text()}'")
+        self._finish_intro()
 
     def _finish_intro(self):
         """Libera sistema e inicia vídeo/gameplay"""
@@ -517,8 +516,9 @@ class MainWindow(QMainWindow):
         if self.game.waiting_for_intro_complete:
             print("[GAME] Notificando intro completa → iniciando prólogo")
             self.game.intro_completed()
-            # Força detecção da fase 0 (prólogo)
-            self.current_phase_displayed = None
+            # Força detecção da fase 0 (prólogo) setando current_phase diferente
+            self.current_phase_displayed = -1
+            print(f"[GAME] Fase agora é {self.game.fase_atual}, current_phase={self.current_phase_displayed}")
             return
         
         # Fases normais: inicia loop do corte
@@ -575,6 +575,10 @@ class MainWindow(QMainWindow):
     # ----------------- UPDATE STATE -----------------
     def update_state(self, game, dados, cam_frame, evento):
         self._show_cam(cam_frame)
+        
+        # Debug
+        if game.fase_atual == 0 and self.current_phase_displayed != 0:
+            print(f"[DEBUG UPDATE] fase_atual={game.fase_atual}, current={self.current_phase_displayed}, menu={self.menu_mode}, waiting={game.waiting_for_intro_complete}")
         
         # Ignora durante menu ou intro
         if self.menu_mode or game.waiting_for_intro_complete:
