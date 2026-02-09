@@ -11,7 +11,7 @@ import time
 import joblib
 from collections import deque, Counter
 
-yolo = YOLO("yolo26n.pt")
+yolo = YOLO("models/yolo26n.pt")
 model_mlp = joblib.load("models/modelo_mlp.pkl")
 scaler = joblib.load("models/scaler.pkl")
 
@@ -31,6 +31,138 @@ def coords_norm(landmark_list):
         temp_landmark_list.append(lm.z - z0)   
 
     return temp_landmark_list
+
+
+# ----------- Classe para Estado do jogo -------------------
+
+class GameState:
+    def __init__(self, fases):
+        self.fases = fases
+        self.fase_atual = 0
+        self.estado = "JOGANDO"
+        self.cooldown = 0
+        self.video_cap = None
+        self.cooldown_time = 0
+
+    def check_fase(self, g0, g1, objetos=None):
+
+        if self.fase_atual >= len(self.fases):
+            return False
+
+        fase = self.fases[self.fase_atual]
+        tipo = fase["tipo"]
+
+        if tipo == "gesto_unico":
+            return g0 == fase["gesto"] or g1 == fase["gesto"]
+
+        if tipo == "gesto_duplo":
+            a, b = fase["gestos"]
+            return ((g0 == a and g1 == b) or
+                    (g0 == b and g1 == a))
+        
+        if tipo == "objeto":
+            if objetos is None:
+                return False
+            return fase["objeto"] in objetos
+
+        return False
+
+
+    def start_video(self, path):
+        self.video_cap = cv2.VideoCapture(path)
+
+
+    def play_video_step(self):
+
+        if self.video_cap is None:
+            return None
+
+        ok, frame = self.video_cap.read()
+
+        if not ok:
+            self.video_cap.release()   # ← corrigido
+            self.video_cap = None
+            self.fase_atual += 1
+            return "video_done"
+
+        return frame
+
+
+    def update(self, g0, g1, objetos=None):
+
+        if time.time() < self.cooldown_time:
+            return "aguardando"
+
+        fase = self.fases[self.fase_atual]
+        tipo = fase["tipo"]
+
+        if tipo == "gesto_duplo":
+            if g0 == "Nenhum" or g1 == "Nenhum":
+                return None
+
+        if tipo == "gesto_unico":
+            if g0 == "Nenhum" and g1 == "Nenhum":
+                return None
+            
+        if tipo == "video":
+            return None
+
+        if self.check_fase(g0, g1, objetos):
+            self.fase_atual += 1
+            self.cooldown_time = time.time() + 1.0
+            return "fase_ok"
+
+        return None
+
+
+
+# ============ Configuração Game ================
+
+fases = [
+    {
+        "nome": "prologo_carnaval",
+        "tipo": "video",
+        "arquivo": "assets/prolog.mp4"
+    },
+
+    {
+        "nome": "alianca",
+        "tipo": "gesto_duplo",
+        "gestos": ["A", "B"]
+    },
+
+    {
+        "nome": "video_fase1",
+        "tipo": "video",
+        "arquivo": "assets/fase1.mp4"
+    },
+
+    {
+        "nome": "boo",
+        "tipo": "objeto",
+        "objeto": "cat"
+    },
+
+    {
+        "nome": "video_fase2",
+        "tipo": "video",
+        "arquivo": "assets/fase2.mp4"
+    },
+
+    {
+        "nome": "rio_branco",
+        "tipo": "gesto_duplo",
+        "gestos": ["C", "D"]
+    },
+
+    {
+        "nome": "video_fase3",
+        "tipo": "video",
+        "arquivo": "assets/fase3.mp4"
+    }
+]
+
+game = GameState(fases)
 
 # ============ Configurando o MediaPipe ==================
 
@@ -70,7 +202,9 @@ probs_val = [
     deque(maxlen=7),
     deque(maxlen=7)
 ]
+fase_msg_timer = 0
 
+frame_count = 0
 
 with HandLandmarker.create_from_options(options) as detector:
     camera = cv2.VideoCapture(0)
@@ -91,6 +225,49 @@ with HandLandmarker.create_from_options(options) as detector:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data = imageRGB)
         
         resultados = detector.detect(mp_image)
+
+        if game.fase_atual >= len(game.fases):
+            cv2.putText(imagem, "JOGO FINALIZADO", (200,200),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+            cv2.imshow("Test", imagem)
+            if cv2.waitKey(1) == 27:
+                break
+            continue
+
+        fase = game.fases[game.fase_atual]
+
+        if fase["tipo"] == "video":
+
+            if game.video_cap is None:
+                game.start_video(fase["arquivo"])
+
+            frame = game.play_video_step()
+
+            if isinstance(frame, np.ndarray):
+                cv2.imshow("Test", frame)
+                if cv2.waitKey(30) == 27:
+                    break
+                continue
+
+        if fase_msg_timer > 0:
+            cv2.putText(imagem, "Avancou de Fase!", (200,200),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0,255,0), 3)
+            fase_msg_timer -= 1
+
+        if frame_count % 10 == 0:
+            objetos_cache = []
+            resultados_yolo = yolo(imagem.copy(), verbose=False)
+            for box in resultados_yolo[0].boxes:
+                cls = int(box.cls[0].cpu().numpy())
+                label = yolo.names[cls]
+                conf = float(box.conf[0].cpu().numpy())
+                if label == "cat" and conf > 0.6:
+                    objetos_cache.append({
+                        "label": label,
+                        "conf": conf
+                    })
+                    
+        frame_count += 1
 
         # ---- Desenhar linhas e points do MediaPipe --------
 
@@ -143,20 +320,30 @@ with HandLandmarker.create_from_options(options) as detector:
                     1,
                     (0,0,255),
                     2)
+                
+            # ----------- Lógica Game -------------
+
+            gesto0, gesto1 = pred_hands[0], pred_hands[1]
+            evento = None
+            objetos_detectados = [o["label"] for o in objetos_cache]
+            evento = game.update(gesto0, gesto1, objetos_detectados)
+
+            if evento == "fase_ok":
+                fase_msg_timer = 30
 
         # ------------- // -------------
 
         # ---------- Desenha o FPS na tela --------------
 
         tempo_agora = time.time()
-        fps = 1 / (tempo_agora - tempo_antes)
+        delta = tempo_agora - tempo_antes
+        fps = 1/delta if delta > 0 else 0
+
         tempo_antes = tempo_agora
 
         fps_text = f"FPS: {int(fps)}"
 
         cv2.putText(imagem, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0))
-
-        # ----------- Grava Coords -------------
 
         # ----------- // -------------
 
