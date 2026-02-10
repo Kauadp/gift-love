@@ -51,6 +51,10 @@ class GameState:
         if tipo == "video":
             return None
 
+        # Debug: mostra o que está sendo verificado
+        if g0 != "Nenhum" or g1 != "Nenhum" or (objetos and len(objetos) > 0):
+            print(f"[GAME DEBUG] Fase {self.fase_atual} ({tipo}): g0={g0}, g1={g1}, obj={objetos}")
+
         # Gestos/objetos
         if tipo == "gesto_unico":
             if g0 == fase["gesto"] or g1 == fase["gesto"]:
@@ -61,6 +65,7 @@ class GameState:
 
         if tipo == "gesto_duplo":
             a, b = fase["gestos"]
+            print(f"[GAME DEBUG] Verificando gesto_duplo: precisa {a}+{b}, tem g0={g0}, g1={g1}")
             if (g0 == a and g1 == b) or (g0 == b and g1 == a):
                 print(f"[GAME] ✓ Gesto duplo {a}+{b} detectado!")
                 self.fase_atual += 1

@@ -324,6 +324,10 @@ class MainWindow(QMainWindow):
             return
         
         print(f"[INTRO] Iniciando: {title_text}")
+        
+        # Esconde floating_text se estiver visível (ex: "COMPLETO!" ainda aparecendo)
+        self.floating_text.hide()
+        
         self._show_date(date_text, emotional_text, title_text, subtitle_text)
 
     def _show_date(self, date_text, emotional_text, title_text, subtitle_text):
@@ -576,6 +580,10 @@ class MainWindow(QMainWindow):
     def update_state(self, game, dados, cam_frame, evento):
         self._show_cam(cam_frame)
         
+        # Log se recebeu evento
+        if evento:
+            print(f"[UPDATE_STATE] Evento recebido: '{evento}'")
+        
         # Debug
         if game.fase_atual == 0 and self.current_phase_displayed != 0:
             print(f"[DEBUG UPDATE] fase_atual={game.fase_atual}, current={self.current_phase_displayed}, menu={self.menu_mode}, waiting={game.waiting_for_intro_complete}")
@@ -591,7 +599,34 @@ class MainWindow(QMainWindow):
                 self.current_phase_displayed = "FIM"
             return
 
-        # Detecta mudança de fase (verifica se é diferente E se fase >= 0)
+        # PRIMEIRO: Processa evento de fase concluída (antes de detectar mudança)
+        if evento == "fase_ok":
+            # A fase que foi completada é a anterior (game já incrementou fase_atual)
+            fase_completada = game.fase_atual - 1
+            
+            # Evita processar o mesmo evento múltiplas vezes
+            if self.shown_complete_for_phase != fase_completada:
+                print(f"[EVENTO] Fase {fase_completada} OK! (agora em fase {game.fase_atual})")
+                self.shown_complete_for_phase = fase_completada
+                
+                # Para o loop antes de avançar para o vídeo da fase
+                self.video.stop()
+                
+                # Desbloqueia memória apenas nas FASES REAIS (1, 3, 5)
+                if fase_completada in [1, 3, 5]:
+                    memory_index = {1: 0, 3: 1, 5: 2}[fase_completada]
+                    print(f"[MEMORIA] ✓ Desbloqueando cartinha {memory_index} (completou fase {fase_completada})")
+                    self.unlock_memory(memory_index)
+                else:
+                    print(f"[MEMORIA] Fase {fase_completada} não desbloqueia memória (não é fase real)")
+                
+                self.show_floating_text("COMPLETO!", 2500)
+                
+                # NÃO atualiza current_phase_displayed aqui!
+                # Deixa para o bloco de detecção de mudança de fase fazer isso
+                # e iniciar o vídeo/intro da próxima fase
+
+        # DEPOIS: Detecta mudança de fase (verifica se é diferente E se fase >= 0)
         if self.current_phase_displayed != game.fase_atual and game.fase_atual >= 0:
             fase = game.fases[game.fase_atual]
             print(f"\n[FASE] {self.current_phase_displayed} → {game.fase_atual} ({fase['tipo']}) '{fase.get('nome', '?')}'")
@@ -623,14 +658,14 @@ class MainWindow(QMainWindow):
                     "emotional": "Me Mostra Sua Aliança ✋👈",
                     "title": "ALIANCA",
                     "subtitle": "Gestos: A + B",
-                    "loop_file": "assets/prolog.mp4"  # ⚠️ Mude para loop da fase
+                    "loop_file": "assets/ney1.mp4"  # ⚠️ Mude para loop da fase
                 },
                 3: {
                     "date": "13 de Novembro de 2025",
                     "emotional": "Me Mostra a Gata 🐈‍⬛",
                     "title": "BOO",
                     "subtitle": "Mostre: cat",
-                    "loop_file": "assets/prolog.mp4"  # ⚠️ Mude para loop da fase
+                    "loop_file": "assets/ney2.mp4"  # ⚠️ Mude para loop da fase
                 },
                 5: {
                     "date": "05 de Abril de 2025",
@@ -660,23 +695,3 @@ class MainWindow(QMainWindow):
                 )
             
             self.current_phase_displayed = game.fase_atual
-
-        # Fase concluída
-        if evento == "fase_ok" and self.shown_complete_for_phase != game.fase_atual:
-            # A fase que foi completada é a anterior (game já incrementou fase_atual)
-            fase_completada = game.fase_atual - 1
-            print(f"[EVENTO] Fase {fase_completada} OK! (agora em fase {game.fase_atual})")
-            self.shown_complete_for_phase = game.fase_atual
-            
-            # Para o loop antes de avançar para o vídeo da fase
-            self.video.stop()
-            
-            # Desbloqueia memória apenas nas FASES REAIS (1, 3, 5)
-            if fase_completada in [1, 3, 5]:
-                memory_index = {1: 0, 3: 1, 5: 2}[fase_completada]
-                print(f"[MEMORIA] ✓ Desbloqueando cartinha {memory_index} (completou fase {fase_completada})")
-                self.unlock_memory(memory_index)
-            else:
-                print(f"[MEMORIA] Fase {fase_completada} não desbloqueia memória (não é fase real)")
-            
-            self.show_floating_text("COMPLETO!", 2500)

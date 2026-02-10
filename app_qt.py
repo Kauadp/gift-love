@@ -10,11 +10,11 @@ from ui_qt.main_window import MainWindow
 
 
 fases = [
-    {"nome": "prologo", "tipo": "video", "arquivo": "assets/prolog.mp4"},
+    {"nome": "prologo", "tipo": "video", "arquivo": "assets/ney3.mp4"},
     {"nome": "alianca", "tipo": "gesto_duplo", "gestos": ["A", "B"]},
-    {"nome": "fase_1", "tipo": "video", "arquivo": "assets/prolog.mp4"},
+    {"nome": "fase_1", "tipo": "video", "arquivo": "assets/ney1.mp4"},
     {"nome": "boo", "tipo": "objeto", "objeto": "cat"},
-    {"nome": "fase_2", "tipo": "video", "arquivo": "assets/prolog.mp4"},
+    {"nome": "fase_2", "tipo": "video", "arquivo": "assets/ney2.mp4"},
     {"nome": "estadio", "tipo": "gesto_unico", "gesto": "A"},
     {"nome": "fase_3", "tipo": "video", "arquivo": "assets/prolog.mp4"}
 ]
